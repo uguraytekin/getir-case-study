@@ -1,0 +1,7 @@
+#MongoDB Connection
+spring:
+  data:
+    mongodb:
+      uri: mongodb://getir:password@getir-mongo1:30001/getir?authSource=admin
+
+

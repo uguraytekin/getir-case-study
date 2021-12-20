@@ -1,0 +1,27 @@
+#Port
+server:
+  port: 8080
+
+logging:
+  level:
+    com.guraytekin.getircasestudy: TRACE
+
+#MongoDB Connection
+spring:
+  data:
+    mongodb:
+      uri: mongodb://getir:password@localhost:30001/getir?authSource=admin
+
+# App Properties
+getir:
+  jwt:
+    secret: uguraytekinSecretKey
+    expirationMs: 86400000
+
+
+#OpenApi - SwaggerUI
+springdoc:
+  swagger-ui:
+    path: /
+    disable-swagger-default-url: true
+

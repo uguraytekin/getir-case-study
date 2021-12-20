@@ -1,0 +1,16 @@
+version: '3.9'
+
+services:
+
+    adminmongo:
+      image: mrvautin/adminmongo
+      hostname: 'getir-adminmongo'
+      container_name: 'getir-adminmongo'
+      ports:
+        - 1234:1234
+      environment:
+        - HOST=0.0.0.0
+
+networks:
+  getir-network:
+    external: true

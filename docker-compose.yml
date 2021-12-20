@@ -1,0 +1,24 @@
+version: '3.5'
+
+services:
+
+  getir-case-study:
+    build: .
+    container_name: services
+    restart: always
+    ports:
+      - 8080:8080
+    command: --spring.profiles.active=docker
+    networks:
+      - getir-network
+    volumes:
+      - getir-case-study:/tmp
+
+
+
+volumes:
+  getir-case-study:
+
+networks:
+  getir-network:
+    external: true
