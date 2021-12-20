@@ -1,7 +1,7 @@
 package com.uguraytekin.getircasestudy.order.service;
 
-import com.mongodb.client.result.UpdateResult;
 import com.uguraytekin.getircasestudy.book.models.Book;
+import com.uguraytekin.getircasestudy.book.repository.BookRepository;
 import com.uguraytekin.getircasestudy.common.exception.EntityNotFoundException;
 import com.uguraytekin.getircasestudy.common.exception.InsufficientStockException;
 import com.uguraytekin.getircasestudy.order.models.Order;
@@ -10,22 +10,16 @@ import com.uguraytekin.getircasestudy.order.payload.CreateOrderDetailDto;
 import com.uguraytekin.getircasestudy.order.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.mongodb.MongoTransactionManager;
-import org.springframework.data.mongodb.core.MongoOperations;
-import org.springframework.data.mongodb.core.query.Query;
-import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-
-import static org.springframework.data.mongodb.core.query.Criteria.where;
-import static org.springframework.data.mongodb.core.query.Query.query;
 
 /**
  * @Author: Ugur Aytekin
@@ -37,8 +31,7 @@ import static org.springframework.data.mongodb.core.query.Query.query;
 @Log4j2
 public class OrderServiceImpl implements OrderService {
 
-    private final MongoOperations mongoOps;
-    private final MongoTransactionManager txManager;
+    private final BookRepository bookRepository;
     private final OrderRepository orderRepository;
 
     @Override
@@ -74,21 +67,14 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
+    @Retryable(value = {OptimisticLockingFailureException.class})
+    @Transactional(rollbackFor = Exception.class)
     public Order buy(String customerId, List<CreateOrderDetailDto> detailList) {
         log.info("Trying to buy order: {}", detailList.toString());
         for (CreateOrderDetailDto orderDetail : detailList) {
-            Query query = query(where("id").is(orderDetail.getBook().getId()).and("stock").gte(orderDetail.getCount()));
-            boolean checkStock = mongoOps.exists(query, Book.class);
-
-            if (!checkStock) {
-                throw new InsufficientStockException("Insufficient Stocks!");
-            }
-
-            mongoOps.update(Book.class)
-                    .matching(query)
-                    .apply(new Update().inc("stock", -orderDetail.getCount()))
-                    .first();
+            Book book = bookRepository.findByIdAndStockGreaterThanEqual(orderDetail.getBook().getId(), orderDetail.getCount()).orElseThrow(() -> new InsufficientStockException("Insufficient Stocks!"));
+            book.setStock(book.getStock() - orderDetail.getCount());
+            bookRepository.save(book);
         }
 
         Order order = Order.builder().customerId(customerId).details(detailList.stream().map(detail -> OrderDetail.builder()

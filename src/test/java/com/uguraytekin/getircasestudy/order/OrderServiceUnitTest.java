@@ -2,6 +2,7 @@ package com.uguraytekin.getircasestudy.order;
 
 
 import com.uguraytekin.getircasestudy.book.models.Book;
+import com.uguraytekin.getircasestudy.book.repository.BookRepository;
 import com.uguraytekin.getircasestudy.order.models.Order;
 import com.uguraytekin.getircasestudy.order.models.OrderDetail;
 import com.uguraytekin.getircasestudy.order.payload.CreateOrderDetailDto;
@@ -13,12 +14,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.mongodb.core.ExecutableUpdateOperation;
-import org.springframework.data.mongodb.core.MongoOperations;
-import org.springframework.data.mongodb.core.query.Query;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -29,9 +29,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.springframework.data.mongodb.core.query.Criteria.where;
-import static org.springframework.data.mongodb.core.query.Query.query;
+import static org.mockito.Mockito.*;
 
 /**
  * @Author: Ugur Aytekin
@@ -47,13 +45,7 @@ class OrderServiceUnitTest {
     @Mock
     private OrderRepository orderRepository;
     @Mock
-    private MongoOperations mongoOps;
-    @Mock
-    ExecutableUpdateOperation.ExecutableUpdate<Object> updateOperationMock;
-    @Mock
-    ExecutableUpdateOperation.UpdateWithUpdate<Object> updateWithUpdateMock;
-    @Mock
-    ExecutableUpdateOperation.TerminatingUpdate<Object> terminatingUpdateMock;
+    private BookRepository bookRepository;
 
     Order order;
 
@@ -134,20 +126,34 @@ class OrderServiceUnitTest {
 
         List<CreateOrderDetailDto> detailList = List.of(CreateOrderDetailDto.builder().book(book).count(2).build());
 
-        for (CreateOrderDetailDto detail : detailList) {
-            Query query = query(where("id").is(detail.getBook().getId()).and("stock").gte(detail.getCount()));
-            when(mongoOps.exists(query, Book.class)).thenReturn(true);
-            when(mongoOps.update(any())).thenReturn(updateOperationMock);
-            when(mongoOps.update(any()).matching(query)).thenReturn(updateWithUpdateMock);
-            when(mongoOps.update(any()).matching(query).apply(any())).thenReturn(terminatingUpdateMock);
-        }
-
+        when(bookRepository.findByIdAndStockGreaterThanEqual(any(), any())).thenReturn(Optional.of(book));
+        when(bookRepository.save(book)).thenReturn(book);
         when(orderRepository.save(any())).thenReturn(order);
 
         Order newOrder = orderService.buy(customerId, detailList);
         assertNotNull(newOrder);
         assertEquals(newOrder.getDetails().size(), detailList.size());
         assertEquals(newOrder.getTotalPrice(), detailList.stream().map(x -> x.getBook().getPrice().multiply(BigDecimal.valueOf(x.getCount()))).reduce(BigDecimal.ZERO, BigDecimal::add));
+    }
+
+    @Test
+    public void buy_OptimisticLockingFailureException() {
+
+        String customerId = "1";
+
+        Book book = Book.builder().id("1").price(BigDecimal.valueOf(9)).stock(10).build();
+
+        List<CreateOrderDetailDto> detailList = List.of(CreateOrderDetailDto.builder().book(book).count(2).build());
+
+        when(bookRepository.findByIdAndStockGreaterThanEqual(any(), any())).thenReturn(Optional.of(book));
+        when(bookRepository.save(book)).thenThrow(OptimisticLockingFailureException.class);
+        try {
+            Order newOrder = orderService.buy(customerId, detailList);
+        } catch (OptimisticLockingFailureException e) {
+            System.out.println("Exception caught");
+        }
+
+        verify(bookRepository, times(1)).save(book);
     }
 
 }
